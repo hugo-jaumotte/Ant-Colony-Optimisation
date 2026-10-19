@@ -332,21 +332,27 @@ void enregistrer_json(string nom_fichier, const Resultat& resultat) {
 #ifndef JSP_SANS_MAIN
 int main() {
 
+    // Le temps total commence avant la lecture de l'instance.
+    auto debut = chrono::steady_clock::now();
+
     // Modifier ces valeurs, puis cliquer sur le bouton vert de Visual Studio.
-    string nom = "6_6";            // Instance : "3_3", "6_6", "10_5", "20_10", "20_15"
-    int nb_essais = 100000;        // Nombre de plannings à construire
+    string nom = "6_6";          // Instance : "3_3", "6_6", "10_5", "20_10", "20_15"
+    double duree_max = 60.0;       // Budget total en secondes
     double beta = 2.0;             // Influence de l'heuristique B
     unsigned int graine = 12345;   // Changer ce nombre pour faire un autre test
 
-    if (nb_essais <= 0) {
-        cerr << "Le nombre d'essais doit etre strictement positif." << endl;
+    // Réserver une seconde pour finir le planning en cours, vérifier et exporter.
+    const double marge_securite = 1.0;
+
+    if (!isfinite(duree_max) || duree_max <= marge_securite) {
+        cerr << "La duree maximale doit etre superieure a 1 seconde." << endl;
         return 1;
     }
 
-    // Une même graine reproduit les tirages avec le même exécutable et les mêmes paramètres.
+    // La graine fixe la suite des tirages. Le nombre d'essais dépend du temps disponible.
     mt19937 generateur(graine);
 
-    cout << "Instance : " << nom << ", essais : " << nb_essais
+    cout << "Instance : " << nom << ", budget : " << duree_max << " secondes"
         << ", beta : " << beta << ", graine : " << graine << endl;
 
     // Lecture du fichier
@@ -355,11 +361,11 @@ int main() {
     Resultat meilleur_resultat;
     meilleur_resultat.makespan = -1;
 
-    // Début du chronomètre
-    auto debut = chrono::steady_clock::now();
+    int nb_essais = 0;
+    auto debut_recherche = chrono::steady_clock::now();
 
-    // Générer plusieurs plannings
-    for (int essai = 0; essai < nb_essais; essai++) {
+    // Construire au moins un planning, puis recommencer tant qu'il reste du temps.
+    do {
 
         Resultat resultat = construire_planning(
             instance.jobs,
@@ -368,22 +374,24 @@ int main() {
             generateur
         );
 
+        nb_essais++;
+
         // Conserver le meilleur planning
         if (meilleur_resultat.makespan == -1 ||
             resultat.makespan < meilleur_resultat.makespan) {
 
             meilleur_resultat = resultat;
 
-            cout << "Essai " << essai + 1
+            cout << "Essai " << nb_essais
                 << " : nouveau meilleur makespan = "
                 << resultat.makespan << endl;
         }
-    }
+    } while (chrono::duration<double>(chrono::steady_clock::now() - debut).count()
+        < duree_max - marge_securite);
 
-    // Fin du chronomètre
-    auto fin = chrono::steady_clock::now();
-
-    double temps = chrono::duration<double>(fin - debut).count();
+    double temps_recherche = chrono::duration<double>(
+        chrono::steady_clock::now() - debut_recherche
+    ).count();
 
     // Vérifier le meilleur résultat avant de créer ou de remplacer le JSON.
     string erreur;
@@ -401,13 +409,18 @@ int main() {
         meilleur_resultat
     );
 
+    double temps_total = chrono::duration<double>(
+        chrono::steady_clock::now() - debut
+    ).count();
+
     cout << "JSON enregistre : Base/" << nom << ".json" << endl;
 
     cout << "\nMeilleur makespan apres " << nb_essais
         << " essais : " << meilleur_resultat.makespan << endl;
 
-    cout << "Temps d'execution : "
-        << temps << " secondes" << endl;
+    cout << "Temps de recherche : " << temps_recherche << " secondes" << endl;
+    cout << "Temps total (lecture, recherche, verification, export) : "
+        << temps_total << " secondes" << endl;
 
     return 0;
 }
